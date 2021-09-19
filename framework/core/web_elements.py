@@ -1,124 +1,181 @@
-from pyautogui import click
-from selenium.webdriver import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support.ui import Select as BaseSelect
-from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.common.keys import Keys
+import logging
 
-import framework.utils.logger
-from framework.core.types import By, Locator
-from framework.settings.config import config
-from framework.utils.logger import logger, info
-from framework.browser.webdriver import WebDriver
-from framework.core.errors import MethodDoesNotSupportThisLocator
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.by import By as LocatorType
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as ec
+from selenium.webdriver.support.ui import Select as BaseSelect
+from selenium.webdriver.support.ui import WebDriverWait
+
+from framework import config
+from .errors import MethodDoesNotSupportThisLocator
+
+logger = logging.getLogger(__name__)
 
 
 class WebElement:
 
-    def __init__(self, locator_type, locator, description: str = '', wait_timeout=0):
-        framework.utils.logger.info(f"Creating element %s with name=%s and locator=%s" % (self.__class__.__name__, description, locator))
-        self._web_driver = WebDriver.get_driver()
-        self._default_wait = WebDriverWait(self._web_driver, float(config.element_search_timeout))
-        self.no_wait = wait_timeout
-        self.name = description
-        self.locator = Locator(locator_type, locator)
-        self.element = None
-        self.find()
+    def __init__(self, locator, browser, description=None, wait_timeout=0.0):
+        logger.info("Creating element %s with locator=%s description=%s",
+                    self.__class__.__name__, locator, description)
+        self.browser = browser
+        self.description = description
+        self.element_obj = None
+
+        if isinstance(locator, str):
+            if '/' in locator:
+                self.locator = (LocatorType.XPATH, locator)
+            else:
+                self.locator = (LocatorType.ID, locator)
+        else:
+            self.locator = locator
+
+        if not wait_timeout:
+            self.wait_timeout = float(config.DEFAULT_WAIT_TIMEOUT)
+        else:
+            self.wait_timeout = wait_timeout
+
+        self._driver = self.browser.driver
+        self.wait = WebDriverWait(self._driver, self.wait_timeout)
 
     def find(self):
-        """Default search for an element."""
-        framework.utils.logger.info(f"{self.__class__.__name__}.find Searching of '{self.name}' by locator {self.locator}")
-        if self.element is None:
-            self.research()
+        logger.info('Searching for element with locator: %s', self.locator)
+        self.wait.until(ec.presence_of_element_located(self.locator))
+        return self._driver.find_element(*self.locator)
 
-    def research(self):
-        """Forced search for an element."""
-        if self.no_wait:
-            self.element = self._web_driver.find_element(*self.locator)
-        else:
-            self.element = self._default_wait.until(ec.presence_of_element_located(self.locator))
-
-    @info("Searching of multiple elements.")
     def find_all(self):
-        if self.locator.type != By.XPATH:
-            raise MethodDoesNotSupportThisLocator(self.locator.type)
+
+        if self.locator[0] != LocatorType.XPATH:
+            raise MethodDoesNotSupportThisLocator(self.locator[0])
+
+        logger.info('Searching multiple elements with locator: %s', self.locator)
+
         result_list = []
-        items = self._default_wait.until(ec.presence_of_all_elements_located((By.XPATH, self.locator.value)))
+        items = self.wait.until(ec.presence_of_all_elements_located(self.locator))
         for i, item in enumerate(items, 1):
             result_list.append(
-                self.__class__(f'{self.__class__.__name__} {i}', By.XPATH, f'({self.locator.value})[{i}]')
+                self.__class__(
+                    (LocatorType.XPATH, f'({self.locator[1]})[{i}]'),
+                    self.browser,
+                    self.description,
+                    self.wait_timeout
+                )
             )
         return result_list
 
-    @info('Checking for an element presence.')
-    def is_presented(self):
-        return True if self._web_driver.find_elements(*self.locator) else False
+    @property
+    def web_element(self):
+        if not self.element_obj:
+            self.element_obj = self.find()
+        self.highlight_element()
+        return self.element_obj
 
-    @info('Clicking to the element')
+    @property
+    def text(self):
+        return self.web_element.text
+
+    @property
+    def exists(self):
+        logger.info('Checking existence of element with locator: %s', self.locator)
+        return True if self._driver.find_elements(*self.locator) else False
+
     def click(self):
-        self.research()
-        self.element.click()
+        logger.info('Click to element with locator: %s', self.locator)
+        element = self.web_element
+        self.wait_to_be_clickable()
+        action = ActionChains(self._driver)
+        action.move_to_element(element).click(on_element=element).perform()
 
-    def safe_click(self, hold_seconds=0, x_offset=1, y_offset=1):
-        framework.utils.logger.info(f"{self.__class__.__name__}.click to '{self.name}'")
-        element = self.wait_to_be_clickable()
-        if element:
-            action = ActionChains(self._web_driver)
-            action.move_to_element_with_offset(element, x_offset, y_offset).pause(hold_seconds)\
-                .click(on_element=element).perform()
-        else:
-            raise AttributeError('ELEMENT NOT FOUND')
+    def double_click(self):
+        logger.info('Double click to element with locator: %s', self.locator)
+        element = self.web_element
+        self.wait_to_be_clickable()
+        action = ActionChains(self._driver)
+        action.move_to_element(element).double_click(on_element=element).perform()
 
-    def double_click(self, hold_seconds=0, x_offset=1, y_offset=1):
-        framework.utils.logger.info(f"{self.__class__.__name__}.double_click to '{self.name}'")
-        element = self.wait_to_be_clickable()
-        if element:
-            action = ActionChains(self._web_driver)
-            action.move_to_element_with_offset(element, x_offset, y_offset).pause(hold_seconds)\
-                .double_click(on_element=element).perform()
-        else:
-            raise AttributeError('ELEMENT NOT FOUND')
+    @property
+    def visible(self):
+        logger.info('Checking visibility of element with locator: %s', self.locator)
+        return self.web_element.is_displayed()
 
-    def is_visible(self):
-        framework.utils.logger.info(f"{self.__class__.__name__}.is_visible Check for '{self.name}'")
-        return self.element.is_displayed()
-
-    def get_attribute(self, attr_name):
-        framework.utils.logger.info(f"{self.__class__.__name__}.get_attribute '{attr_name}' from '{self.name}'")
-        return self.element.get_attribute(attr_name)
-
-    def get_text(self):
-        framework.utils.logger.info(f"{self.__class__.__name__}.get_text from '{self.name}'")
-        return self.element.text
+    def get(self, attr_name):
+        logger.info('Getting attr_name="%s" for element with locator: %s', attr_name, self.locator)
+        return self.web_element.get_attribute(attr_name)
 
     def wait_to_be_clickable(self):
-        """Wait until the element will be ready for click."""
-        framework.utils.logger.info(f"{self.__class__.__name__}.wait_to_be_clickable for '{self.name}'")
-        element = self._default_wait.until(ec.element_to_be_clickable(self.locator))
-        return element
+        logger.info('Wait element to be clickable with locator: %s', self.locator)
+        self.wait.until(ec.element_to_be_clickable(self.locator))
 
     def wait_until_not_visible(self):
-        framework.utils.logger.info(f"{self.__class__.__name__}.wait_until_not_visible for '{self.name}'")
-        element = self._default_wait.until(ec.visibility_of_element_located(self.locator))
-        return element
+        logger.info('Wait appearing of element with locator: %s', self.locator)
+        self.wait.until(ec.visibility_of_element_located(self.locator))
 
-    def wait_for_invisible(self):
-        framework.utils.logger.info(f"{self.__class__.__name__}.wait_for_invisible for '{self.name}'")
-        element = self._default_wait.until(ec.invisibility_of_element_located(self.locator))
-        return element
+    def wait_disappear(self):
+        logger.info('Wait disappearing of element with locator: %s', self.locator)
+        self.wait.until(ec.invisibility_of_element_located(self.locator))
 
-    def is_clickable(self):
-        """ Check is element ready for click or not. """
-        framework.utils.logger.info(f"{self.__class__.__name__}.is_clickable '{self.name}'")
-        element = self.wait_to_be_clickable()
-        return element is not None
+    def highlight_element(self):
+        self._driver.execute_script(
+            f'''
+                item = document.evaluate('{self.locator[1]}', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE)
+                if (item.singleNodeValue) {{
+                    item.singleNodeValue.style.border = "3px solid red"
+                }}
+            '''
+        )
 
     def move_to_element(self):
-        action = ActionChains(self._web_driver)
-        action.move_to_element_with_offset(self.element, 5, 5).perform()
+        logger.info('Moving to element with locator: %s', self.locator)
+        element = self.web_element
+        action = ActionChains(self._driver)
+        action.move_to_element_with_offset(element, 5, 5).perform()
+
+    def scroll_to_element(self):
+        logger.info('Scrolling to element with locator: %s', self.locator)
+        self._driver.execute_script(
+            f'''
+            item = document.evaluate('{self.locator[1]}', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            item.singleNodeValue.scrollIntoView();
+            '''
+        )
+
+
+class EditBox(WebElement):
+
+    def send_keys(self, keys):
+        logger.info('Sending keys="%s" to element with locator: %s', keys, self.locator)
+        keys = keys.replace('\n', '')
+        self.web_element.send_keys(keys)
+
+    def set_text(self, text):
+        logger.info('Calling method "set_text"')
+        self.clear()
+        self.send_keys(text)
+
+    def clear(self):
+        logger.info('Clearing text from EditBox with locator: %s', self.locator)
+        self.web_element.clear()
+
+    def select_text(self):
+        logger.info('Selecting text in EditBox with locator: %s', self.locator)
+        element = self.web_element
+        element.send_keys(Keys.LEFT_CONTROL, Keys.HOME)
+        element.send_keys(Keys.LEFT_CONTROL, Keys.SHIFT, Keys.END)
+
+
+class Select(WebElement):
+
+    def select_item_by_value(self, value):
+        logger.info('Selecting item for element with locator: %s', self.locator)
+        select = BaseSelect(self.web_element)
+        select.select_by_value(value)
 
 
 class Button(WebElement):
+    pass
+
+
+class CheckBox(WebElement):
     pass
 
 
@@ -126,56 +183,8 @@ class Label(WebElement):
     pass
 
 
-class TextBox(WebElement):
-
-    def send_keys(self, keys):
-        framework.utils.logger.info(f"{self.__class__.__name__}.send_keys to '{self.name}'")
-        self.research()
-        keys = keys.replace('\n', '\ue007')
-        self.element.send_keys(keys)
-
-    def set_text(self, text):
-        self.clear()
-        self.send_keys(text)
-
-    def clear(self):
-        self.research()
-        self.element.clear()
-
-    def select_text(self):
-        self.element.send_keys(Keys.LEFT_CONTROL, Keys.HOME)
-        self.element.send_keys(Keys.LEFT_CONTROL, Keys.SHIFT, Keys.END)
-
-
-class CheckBox(WebElement):
-    pass
-
-
-class Frame(WebElement):
-
-    def get_web_element(self):
-        """Returns WebElement object"""
-        return self.element
-
-
 class Link(WebElement):
-
-    def get_link(self):
-        self.research()
-        return self.element.get_attribute('href')
-
-
-class Select(WebElement):
-
-    def select_by_value(self, value):
-        framework.utils.logger.info(f"{self.__class__.__name__}.select_by_value for '{self.name}'")
-        self.research()
-        select = BaseSelect(self.element)
-        select.select_by_value(value)
-
-
-class Block(WebElement):
     pass
 
 
-__all__ = [Button, Label, TextBox, CheckBox, Frame, Link, Select]
+__all__ = ["WebElement", "Button", "Label", "EditBox", "CheckBox", "Link", "Select"]

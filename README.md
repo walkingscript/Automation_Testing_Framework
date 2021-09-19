@@ -1,30 +1,34 @@
-# TEST FRAMEWORK DEVELOPMENT
+# AUTOMATION TESTING FRAMEWORK
 
-For fast run on Windows you just need to install Python 3.9 and run "start.bat".
-At the first time, this file automaticaly creates virtual environment and downloads required packages.
-After, that is runs the tests.
+Requirements:
+    
+`Python 3.9`
+`Allure`
+`Chrome`
+`FireFox`
 
-For manual run of this project needs Python 3.9 interpreter and virtual environment.
-
-Download Python you can here: https://www.python.org/ Don't forget to add python to your environment variable in process of install.
-
-After that, you should to create virtual environment in the project folder and install requirements. For that in console type next commands.
+For fast run on Windows you just need to install Python 3.9 and run "fast_run.bat".
+Thus, python will automatically set up virtual environment and download required packages.
+After, it'll run demo test.
 
 For Linux:
 
-    pip install -m venv ./venv
-    source venv\bin\activate
+    pip install -m venv venv
+    source venv/bin/activate
+    pip install --upgrade pip
     pip install -r requirements.txt
 
 For Windows:
 
-    pip install -m venv ./venv
+    pip install -m venv venv
     venv\scripts\activate
+    pip install --upgrade pip 
     pip install -r requirements.txt
 
-To run project type:
+Test runs from root directory under your virtual environment:
 
-    cd project
-    pytest -v -p no:cacheprovider --html=artifacts/index.html --self-contained-html
+    pytest --alluredir=artifacts/allure_data/chrome/ --clean-alluredir -m demo_test
+
+Some key params are present in pytest addopts (pytest.ini).
 
 Good Luck!

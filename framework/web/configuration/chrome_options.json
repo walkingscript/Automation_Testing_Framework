@@ -1,0 +1,15 @@
+{
+  "arguments": [],
+  "experimental_options": {
+    "excludeSwitches": [
+      "enable-automation"
+    ]
+  },
+  "preferences": {
+    "safebrowsing.enabled": true,
+    "download.prompt_for_download": false,
+    "download.directory_upgrade": true,
+    "credentials_enable_autosignin": false,
+    "credentials_enable_service": false
+  }
+}

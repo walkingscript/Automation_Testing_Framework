@@ -1,0 +1,9 @@
+{
+  "DOWNLOADS_DIRECTORY": "artifacts/downloads",
+  "SCREENSHOTS_DIRECTORY": "artifacts/screenshots",
+  "LOGS_DIRECTORY": "artifacts/logs",
+  "ERRORS_ONLY_LOG_FILE": "artifacts/logs/only_errors.log",
+  "DEFAULT_WAIT_TIMEOUT": 15,
+  "LANGUAGE": "ru",
+  "WEB_BROWSER": "chrome"
+}

@@ -1,0 +1,1 @@
+This folder created to place only tests that will be started by pytest.
